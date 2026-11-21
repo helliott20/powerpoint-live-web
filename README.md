@@ -49,12 +49,16 @@ This writes `manifest.xml` with the SourceLocation, icon URLs and AppDomains for
 
 ### Sideload it
 
+If you use the GitHub Pages deploy, the manifest is already published at `<pages-url>/manifest.xml`. Download it first: Office reads the manifest from a file, not from a URL.
+
 | Platform | How |
 |---|---|
-| **PowerPoint on the web** | Insert → Add-ins → *Upload My Add-in* → choose `manifest.xml`. |
-| **Windows** | Put `manifest.xml` in a shared network folder, for example `\\server\addins`. In PowerPoint, go to File → Options → Trust Center → Trust Center Settings → *Trusted Add-in Catalogs*. Add the share's UNC path, tick *Show in Menu* and restart PowerPoint. Then go to Insert → Add-ins → *Shared Folder*. |
-| **Mac** | Copy `manifest.xml` into `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef` (create the `wef` folder if it is missing). Restart PowerPoint, then go to Insert → Add-ins → *My Add-ins*. |
-| **Whole organisation** | Microsoft 365 admin centre → Settings → *Integrated apps* → *Upload custom apps* → upload `manifest.xml` and assign users. |
+| **PowerPoint on the web** | Open a presentation → **Home → Add-ins → More Settings → Upload My Add-in** → browse to `manifest.xml` → **Upload**. The upload is stored in browser storage, so you need to repeat it in another browser or after clearing the cache. |
+| **Windows** | Put `manifest.xml` in a folder and share it (folder **Properties → Sharing → Share**, then note the `\\PC\share` path). In PowerPoint, go to **File → Options → Trust Center → Trust Center Settings → Trusted Add-in Catalogs**, paste the **network path** into *Catalog Url*, click **Add catalog**, tick **Show in Menu**, then click OK. Restart PowerPoint, then go to **Home → Add-ins → Advanced → SHARED FOLDER** → select Live Web → **Add**. *Catalog Url must be a network share path. An https:// link to the manifest does not work.* |
+| **Mac** | Copy `manifest.xml` into `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef` (create `wef` if it's missing). Restart PowerPoint, then go to **Home → Add-ins** → select Live Web. |
+| **Whole organisation** | Microsoft 365 admin centre → Settings → *Integrated apps* → *Upload custom apps* → upload `manifest.xml` and assign users. This is the production route; Microsoft says the shared-folder catalog is for testing only. |
+
+Reference: Microsoft Learn, *Sideload Office Add-ins for testing*, *Create a network shared folder catalog*, *Sideload an Office Add-in on Mac*.
 
 ### Use it
 
