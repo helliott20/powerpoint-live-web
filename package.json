@@ -1,0 +1,23 @@
+{
+  "name": "live-web-addin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PowerPoint content add-in that shows a live website on a slide. Static files only; optional proxy.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p addin && vite build",
+    "preview": "vite preview",
+    "manifest": "tsx addin/scripts/make-manifest.ts",
+    "icons": "tsx addin/scripts/make-icons.ts",
+    "typecheck": "tsc --noEmit -p addin && tsc --noEmit -p proxy/cloudflare && tsc --noEmit -p proxy/node"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/office-js": "^1.0.500",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.8"
+  }
+}

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <title>Live Web</title>
+    <!-- Office.js must come from the official CDN; it is not bundled. -->
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <script type="module" src="./src/main.ts"></script>
+  </head>
+  <body>
+    <div id="stage" hidden>
+      <div id="frameWrap"></div>
+    </div>
+
+    <div id="toolbar" class="toolbar" role="toolbar" aria-label="Live Web controls" hidden>
+      <button type="button" data-action="reload" title="Reload">&#x21bb;<span>Reload</span></button>
+      <button type="button" data-action="edit" title="Edit">&#x270e;<span>Edit</span></button>
+      <button type="button" data-action="popout" title="Pop out">&#x2197;<span>Pop out</span></button>
+      <button type="button" data-action="help" title="Site not showing?">?<span>Not showing?</span></button>
+      <button type="button" data-action="hide" title="Hide toolbar">&#x2715;<span>Hide</span></button>
+    </div>
+    <button type="button" id="restore" title="Show toolbar" aria-label="Show toolbar" hidden></button>
+
+    <div id="blocked" class="overlay" hidden>
+      <div class="card">
+        <p class="title" id="blockedTitle">This site blocks embedding.</p>
+        <p class="sub" id="blockedSub">It may still open in a separate window.</p>
+        <div class="row">
+          <button type="button" class="primary" data-action="popout">Pop out</button>
+          <button type="button" data-action="try-proxy" id="tryProxyBtn" hidden>Try proxy</button>
+          <button type="button" data-action="dismiss" id="dismissBtn">Keep waiting</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="empty" class="overlay" hidden>
+      <p class="sub">No website set. Leave Slide Show and click the add-in to choose one.</p>
+    </div>
+
+    <form id="setup" class="setup" hidden novalidate>
+      <h1>Live Web</h1>
+      <label class="field">
+        <span>Website URL</span>
+        <input id="urlInput" type="url" inputmode="url" placeholder="https://example.com" autocomplete="off" spellcheck="false" required />
+        <small class="error" id="urlError" hidden></small>
+      </label>
+
+      <fieldset class="field" id="modeField">
+        <legend>Mode</legend>
+        <label class="inline"><input type="radio" name="mode" value="direct" checked /> Direct</label>
+        <label class="inline" id="proxyModeLabel"><input type="radio" name="mode" value="proxy" /> Via proxy</label>
+      </fieldset>
+
+      <div class="field two">
+        <label>
+          <span>Zoom <output id="zoomOut">100%</output></span>
+          <input id="zoomInput" type="range" min="50" max="200" step="5" value="100" />
+        </label>
+        <label>
+          <span>Auto-refresh</span>
+          <select id="refreshInput">
+            <option value="0">Off</option>
+            <option value="15">Every 15s</option>
+            <option value="30">Every 30s</option>
+            <option value="60">Every 60s</option>
+          </select>
+        </label>
+      </div>
+
+      <details id="advanced">
+        <summary>Advanced</summary>
+        <label class="field">
+          <span>Proxy base URL (this presentation only)</span>
+          <input id="proxyInput" type="url" placeholder="https://live-web-proxy.example.workers.dev" autocomplete="off" spellcheck="false" />
+          <small class="hint" id="proxyHint"></small>
+          <small class="error" id="proxyError" hidden></small>
+        </label>
+      </details>
+
+      <div class="row actions">
+        <button type="button" id="cancelBtn" hidden>Cancel</button>
+        <button type="button" id="loadBtn">Load</button>
+        <button type="submit" class="primary" id="saveBtn">Save</button>
+      </div>
+      <p class="status" id="status" role="status"></p>
+    </form>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Live Web content add-in manifest TEMPLATE.
+  Do not edit {{TOKENS}} by hand: run `npm run manifest -\- -\-host https://your-host/path`.
+  The <Id> GUID is fixed on purpose; keep it stable so existing presentations keep working.
+  If you fork this project for a different add-in, generate a new GUID once and put it here.
+-->
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:type="ContentApp">
+  <Id>44b1f546-7c41-45eb-a0d2-ae2ac9ed67b9</Id>
+  <Version>{{VERSION}}</Version>
+  <ProviderName>Live Web</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Live Web" />
+  <Description DefaultValue="Show a live, interactive website on a slide, including during Slide Show." />
+  <IconUrl DefaultValue="{{HOST}}/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="{{HOST}}/assets/icon-64.png" />
+  <SupportUrl DefaultValue="{{SUPPORT_URL}}" />
+  <AppDomains>
+{{APP_DOMAINS}}
+  </AppDomains>
+  <Hosts>
+    <Host Name="Presentation" />
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="{{HOST}}/index.html" />
+    <RequestedWidth>800</RequestedWidth>
+    <RequestedHeight>450</RequestedHeight>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <AllowSnapshot>true</AllowSnapshot>
+</OfficeApp>

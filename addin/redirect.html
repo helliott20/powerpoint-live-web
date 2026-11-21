@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Opening…</title>
+    <style>
+      body { font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; margin: 2rem; color: #222; background: #fff; }
+      @media (prefers-color-scheme: dark) { body { color: #eee; background: #1e1e1e; } }
+    </style>
+  </head>
+  <body>
+    <p id="msg">Opening…</p>
+    <script>
+      // Same-origin bounce page for the Office dialog. Office only lets a dialog
+      // open a page on the add-in's own domain, which may then navigate anywhere.
+      (function () {
+        var msg = document.getElementById("msg");
+        var raw = new URLSearchParams(location.search).get("u");
+        var target;
+        try { target = new URL(raw || ""); } catch (e) { target = null; }
+        if (!target || target.protocol !== "https:") {
+          msg.textContent = "Refusing to open: only https:// addresses are allowed.";
+          return;
+        }
+        location.replace(target.href);
+      })();
+    </script>
+  </body>
+</html>

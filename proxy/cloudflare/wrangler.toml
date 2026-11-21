@@ -1,0 +1,16 @@
+# Live Web proxy — Cloudflare Worker (free tier is plenty).
+#   cd proxy/cloudflare && npm install && npx wrangler deploy
+name = "live-web-proxy"
+main = "worker.ts"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[vars]
+# REQUIRED. Only these hosts can be proxied; everything else gets 403.
+# Comma or space separated. "*.example.com" matches example.com and all subdomains.
+ALLOWED_HOSTS = ""
+# REQUIRED. The origin your add-in is served from (used for CORS and frame-ancestors).
+ADDIN_ORIGIN = "https://your-addin-host.example.com"
+
+# Optional: serve from your own domain instead of *.workers.dev
+# routes = [{ pattern = "liveweb-proxy.example.com", custom_domain = true }]
