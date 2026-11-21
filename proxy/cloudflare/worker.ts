@@ -5,6 +5,7 @@
  * Vars (wrangler.toml [vars] or dashboard):
  *   ALLOWED_HOSTS  comma/space separated, e.g. "dashboard.example.com, *.example.org"
  *   ADDIN_ORIGIN   origin hosting the add-in, e.g. "https://liveweb.pages.dev"
+ *   INJECT_CSS     optional CSS added to every proxied page, e.g. "gb-fullscreen-toggle{display:none!important}"
  *   DEFAULT_TARGET optional single-site mode, e.g. "https://presenter.example.com": that site is
  *                  served at the proxy's own paths, for apps that read their own URL/query.
  */

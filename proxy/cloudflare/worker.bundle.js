@@ -2,7 +2,7 @@
 // Paste this into the Cloudflare dashboard (Workers > Edit code). Regenerate with:
 //   cd proxy/cloudflare && npx wrangler deploy --dry-run --outdir out
 // Set variables ALLOWED_HOSTS and ADDIN_ORIGIN in the Worker's Settings > Variables.
-// Variables: ALLOWED_HOSTS, ADDIN_ORIGIN, optional DEFAULT_TARGET (single-site mode).
+// Variables: ALLOWED_HOSTS, ADDIN_ORIGIN, optional DEFAULT_TARGET (single-site mode), optional INJECT_CSS.
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -30,7 +30,7 @@ function parseConfig(env) {
     } catch {
     }
   }
-  return { allowedHosts, addinOrigin, defaultTarget };
+  return { allowedHosts, addinOrigin, defaultTarget, injectCss: (env.INJECT_CSS || "").trim() };
 }
 __name(parseConfig, "parseConfig");
 function hostAllowed(hostname, cfg) {
@@ -420,6 +420,11 @@ function isNavigation(h) {
 }
 __name(isNavigation, "isNavigation");
 function clientShim(target, proxyOrigin, cfg) {
+  const css = cfg.injectCss ? `<style data-live-web>${cfg.injectCss.replace(/<\//g, "<\\/")}</style>` : "";
+  return css + shimScript(target, proxyOrigin, cfg);
+}
+__name(clientShim, "clientShim");
+function shimScript(target, proxyOrigin, cfg) {
   const data = JSON.stringify({ t: target.href, p: proxyOrigin, a: cfg.allowedHosts, d: cfg.defaultTarget }).replace(/</g, "\\u003c");
   return `<script>(function(){try{var C=${data};var A=C.a,P=C.p,T=C.t,D=C.d;
 function ok(h){h=h.toLowerCase();for(var i=0;i<A.length;i++){var r=A[i];if(r.indexOf("*.")===0){var b=r.slice(2);if(h===b||h.slice(-b.length-1)==="."+b)return true}else if(h===r)return true}return false}
@@ -432,7 +437,7 @@ if(window.EventSource){var E=window.EventSource;var NE=function(u,o){return new 
 var O=window.open;window.open=function(u){var a=[].slice.call(arguments);if(u)a[0]=rw(u);return O.apply(this,a)};
 }catch(e){}})();<\/script>`;
 }
-__name(clientShim, "clientShim");
+__name(shimScript, "shimScript");
 
 // worker.ts
 var worker_default = {

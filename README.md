@@ -104,6 +104,10 @@ Some single-page apps read their own address and query string, for example `?auc
 - `<base>` is kept in this mode, because AngularJS and similar frameworks need it.
 - One Worker can mirror only one site. To mirror another site, deploy a second Worker.
 
+### Hiding parts of a page (`INJECT_CSS`)
+
+Set the optional variable **`INJECT_CSS`** to add your own CSS to every proxied page. For example, `gb-fullscreen-toggle{display:none!important}` hides a site's own "Go fullscreen" button, which does nothing useful on a slide.
+
 The single-file `proxy/cloudflare/worker.bundle.js` can be pasted straight into the Cloudflare dashboard (Workers → Edit code) if you don't want to use the CLI.
 
 ### Option A: Cloudflare Worker (free tier)

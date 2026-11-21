@@ -21,12 +21,15 @@ export interface ProxyConfig {
    * Needed for single-page apps that read their own path / query string.
    */
   defaultTarget: string; // origin, or ""
+  /** Optional CSS added to every proxied HTML page, e.g. to hide a site's own buttons. */
+  injectCss: string;
 }
 
 export interface EnvLike {
   ALLOWED_HOSTS?: string;
   ADDIN_ORIGIN?: string;
   DEFAULT_TARGET?: string;
+  INJECT_CSS?: string;
 }
 
 export const BASE_COOKIE = "lw_base";
@@ -58,7 +61,7 @@ export function parseConfig(env: EnvLike): ProxyConfig {
       /* invalid -> mirror mode off */
     }
   }
-  return { allowedHosts, addinOrigin, defaultTarget };
+  return { allowedHosts, addinOrigin, defaultTarget, injectCss: (env.INJECT_CSS || "").trim() };
 }
 
 export function hostAllowed(hostname: string, cfg: ProxyConfig): boolean {
@@ -545,6 +548,12 @@ export function isNavigation(h: Headers): boolean {
  * allowed host (or are root-relative) back through the proxy.
  */
 export function clientShim(target: URL, proxyOrigin: string, cfg: ProxyConfig): string {
+  // "</" can't appear inside <style>, so a value can never close the tag early.
+  const css = cfg.injectCss ? `<style data-live-web>${cfg.injectCss.replace(/<\//g, "<\\/")}</style>` : "";
+  return css + shimScript(target, proxyOrigin, cfg);
+}
+
+function shimScript(target: URL, proxyOrigin: string, cfg: ProxyConfig): string {
   const data = JSON.stringify({ t: target.href, p: proxyOrigin, a: cfg.allowedHosts, d: cfg.defaultTarget }).replace(/</g, "\\u003c");
   return `<script>(function(){try{var C=${data};var A=C.a,P=C.p,T=C.t,D=C.d;
 function ok(h){h=h.toLowerCase();for(var i=0;i<A.length;i++){var r=A[i];if(r.indexOf("*.")===0){var b=r.slice(2);if(h===b||h.slice(-b.length-1)==="."+b)return true}else if(h===r)return true}return false}
