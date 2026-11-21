@@ -10,7 +10,7 @@ workers_dev = true
 # Comma or space separated. "*.example.com" matches example.com and all subdomains.
 ALLOWED_HOSTS = ""
 # REQUIRED. The origin your add-in is served from (used for CORS and frame-ancestors).
-ADDIN_ORIGIN = "https://your-addin-host.example.com"
+ADDIN_ORIGIN = "https://helliott20.github.io"
 
 # Optional: serve from your own domain instead of *.workers.dev
 # routes = [{ pattern = "liveweb-proxy.example.com", custom_domain = true }]
