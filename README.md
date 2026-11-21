@@ -95,6 +95,17 @@ The proxy fetches an allowlisted site and makes these changes:
 - **Responses:** every response gets `Cache-Control: no-store`. CORS is allowed for `ADDIN_ORIGIN` only.
 - **Security:** any host that isn't in `ALLOWED_HOSTS` gets **403**. The proxy is never open. Redirects, rewritten links and WebSockets are all checked against the same list.
 
+### Single-site mode (`DEFAULT_TARGET`)
+
+Some single-page apps read their own address and query string, for example `?auctionUrl=…&projectorId=…`. Through the normal `/?url=` form they find only `url=…`, so they show a blank page. For these apps, set the optional variable **`DEFAULT_TARGET`** to the site's origin, for example `https://presenter.example.com`. The proxy then mirrors that one site at its own paths: `https://proxy/?a=1` serves `https://presenter.example.com/?a=1`. Notes:
+
+- The add-in needs no change. It still requests `/?url=…`, and the proxy redirects that to the mirrored address.
+- The mirrored host is allowed automatically. Add its API hosts to `ALLOWED_HOSTS`.
+- `<base>` is kept in this mode, because AngularJS and similar frameworks need it.
+- One Worker can mirror only one site. To mirror another site, deploy a second Worker.
+
+The single-file `proxy/cloudflare/worker.bundle.js` can be pasted straight into the Cloudflare dashboard (Workers → Edit code) if you don't want to use the CLI.
+
 ### Option A: Cloudflare Worker (free tier)
 
 Edit `proxy/cloudflare/wrangler.toml`:

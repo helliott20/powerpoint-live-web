@@ -5,6 +5,8 @@
  * Env:
  *   ALLOWED_HOSTS  comma/space separated, e.g. "dashboard.example.com, *.example.org"   (required)
  *   ADDIN_ORIGIN   origin hosting the add-in, e.g. "https://liveweb.example.org"         (required)
+ *   DEFAULT_TARGET optional single-site mode, e.g. "https://presenter.example.com": that site is
+ *                  served at the proxy's own paths, for apps that read their own URL/query.
  *   PORT           listen port (default 8787)
  *   PUBLIC_ORIGIN  the https origin browsers use to reach this proxy, if it's behind a
  *                  TLS-terminating reverse proxy that doesn't send X-Forwarded-Proto/Host.
@@ -25,10 +27,9 @@ import {
   handleElement,
   isCss,
   isHtml,
-  isNavigation,
   parseConfig,
   preflightHeaders,
-  proxify,
+  canonicalRedirect,
   resolveTarget,
   rewriteCss,
   textResponseHeaders,
@@ -127,10 +128,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const { target, viaFallback } = r;
   const proxyOrigin = reqUrl.origin;
 
-  // Relative navigations (location.href = '/x') -> canonical ?url= form so later relative URLs resolve.
-  if (viaFallback && isNavigation(reqHeaders) && req.method === "GET") {
+  // Send navigations to their canonical proxy URL (see canonicalRedirect).
+  const redirectTo = canonicalRedirect(reqUrl, reqHeaders, req.method || "GET", target, viaFallback, cfg);
+  if (redirectTo) {
     const h = textResponseHeaders(cfg, reqOrigin);
-    h.set("location", proxify(target, proxyOrigin));
+    h.set("location", redirectTo);
     return send(res, 302, h);
   }
 
@@ -140,7 +142,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   try {
     upstream = await fetch(target.href, {
       method,
-      headers: upstreamHeaders(reqHeaders, target, proxyOrigin),
+      headers: upstreamHeaders(reqHeaders, target, proxyOrigin, cfg),
       body,
       redirect: "manual",
     });
@@ -196,7 +198,7 @@ function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
   if (r.kind === "error") return reject(r.status === 200 ? 400 : r.status, r.message);
   const { target } = r;
 
-  const h = upstreamHeaders(reqHeaders, target, reqUrl.origin);
+  const h = upstreamHeaders(reqHeaders, target, reqUrl.origin, cfg);
   const headers: Record<string, string> = {};
   h.forEach((v, k) => (headers[k] = v));
   headers["connection"] = "Upgrade";

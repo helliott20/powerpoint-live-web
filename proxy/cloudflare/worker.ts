@@ -5,6 +5,8 @@
  * Vars (wrangler.toml [vars] or dashboard):
  *   ALLOWED_HOSTS  comma/space separated, e.g. "dashboard.example.com, *.example.org"
  *   ADDIN_ORIGIN   origin hosting the add-in, e.g. "https://liveweb.pages.dev"
+ *   DEFAULT_TARGET optional single-site mode, e.g. "https://presenter.example.com": that site is
+ *                  served at the proxy's own paths, for apps that read their own URL/query.
  */
 import {
   type ProxyConfig,
@@ -14,10 +16,9 @@ import {
   handleElement,
   isCss,
   isHtml,
-  isNavigation,
   parseConfig,
   preflightHeaders,
-  proxify,
+  canonicalRedirect,
   resolveTarget,
   rewriteCss,
   textResponseHeaders,
@@ -45,12 +46,11 @@ export default {
     const { target, viaFallback } = res;
     const proxyOrigin = reqUrl.origin;
 
-    // Relative navigations (location.href = '/x') -> canonical ?url= form so later relative URLs resolve.
-    if (viaFallback && isNavigation(request.headers) && request.method === "GET") {
-      return Response.redirect(proxify(target, proxyOrigin), 302);
-    }
+    // Send navigations to their canonical proxy URL (see canonicalRedirect).
+    const redirectTo = canonicalRedirect(reqUrl, request.headers, request.method, target, viaFallback, cfg);
+    if (redirectTo) return Response.redirect(redirectTo, 302);
 
-    const headers = upstreamHeaders(request.headers, target, proxyOrigin);
+    const headers = upstreamHeaders(request.headers, target, proxyOrigin, cfg);
 
     // WebSocket upgrade: hand straight to the allowed upstream.
     if ((request.headers.get("upgrade") || "").toLowerCase() === "websocket") {

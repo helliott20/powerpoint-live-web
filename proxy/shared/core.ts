@@ -15,11 +15,18 @@
 export interface ProxyConfig {
   allowedHosts: string[]; // "example.com" (exact) or "*.example.com" (subdomains + apex)
   addinOrigin: string; // e.g. https://liveweb.pages.dev  (no trailing slash)
+  /**
+   * Optional single-site ("mirror") mode. When set, this origin is served at the
+   * proxy's own paths: https://proxy/some/path?q=1 <-> https://site/some/path?q=1.
+   * Needed for single-page apps that read their own path / query string.
+   */
+  defaultTarget: string; // origin, or ""
 }
 
 export interface EnvLike {
   ALLOWED_HOSTS?: string;
   ADDIN_ORIGIN?: string;
+  DEFAULT_TARGET?: string;
 }
 
 export const BASE_COOKIE = "lw_base";
@@ -38,7 +45,20 @@ export function parseConfig(env: EnvLike): ProxyConfig {
       /* invalid -> no CORS, no frame-ancestors entry */
     }
   }
-  return { allowedHosts, addinOrigin };
+  let defaultTarget = "";
+  if (env.DEFAULT_TARGET) {
+    try {
+      const u = new URL(env.DEFAULT_TARGET);
+      if (u.protocol === "https:" || u.protocol === "http:") {
+        defaultTarget = u.origin;
+        // The mirrored site is implicitly allowed.
+        if (!allowedHosts.includes(u.hostname.toLowerCase())) allowedHosts.push(u.hostname.toLowerCase());
+      }
+    } catch {
+      /* invalid -> mirror mode off */
+    }
+  }
+  return { allowedHosts, addinOrigin, defaultTarget };
 }
 
 export function hostAllowed(hostname: string, cfg: ProxyConfig): boolean {
@@ -105,6 +125,7 @@ export function resolveTarget(reqUrl: URL, headers: Headers, cfg: ProxyConfig): 
   } else {
     // Fallback: a relative request from a proxied page (fetch('/api'), CSS url(/x.png), ...)
     let base = proxiedPageFrom(headers.get("referer"), reqUrl.origin);
+    if (!base && cfg.defaultTarget) base = new URL(cfg.defaultTarget + "/");
     if (!base) {
       const c = readCookie(headers.get("cookie"), BASE_COOKIE);
       if (c) {
@@ -142,8 +163,32 @@ export interface RewriteCtx {
   cfg: ProxyConfig;
 }
 
-export function proxify(abs: URL, proxyOrigin: string): string {
+export function proxify(abs: URL, proxyOrigin: string, cfg?: ProxyConfig): string {
+  if (cfg?.defaultTarget) {
+    const o = abs.protocol === "ws:" ? "http:" : abs.protocol === "wss:" ? "https:" : abs.protocol;
+    if (o + "//" + abs.host === cfg.defaultTarget) return proxyOrigin + abs.pathname + abs.search + abs.hash;
+  }
   return proxyOrigin + "/?url=" + encodeURIComponent(abs.href);
+}
+
+/**
+ * Where a request should be redirected to reach its canonical proxy URL, or
+ * null to serve it as is. Navigations arriving via the relative fallback, and
+ * explicit ?url= navigations to the mirrored site, get redirected.
+ */
+export function canonicalRedirect(
+  reqUrl: URL,
+  headers: Headers,
+  method: string,
+  target: URL,
+  viaFallback: boolean,
+  cfg: ProxyConfig,
+): string | null {
+  if (method !== "GET" || !isNavigation(headers)) return null;
+  const mirrored = !!cfg.defaultTarget && target.origin === cfg.defaultTarget;
+  if (!viaFallback && !mirrored) return null;
+  const canonical = proxify(target, reqUrl.origin, cfg);
+  return canonical === reqUrl.href ? null : canonical;
 }
 
 /** Rewrite one URL if it points at an allowed host; otherwise leave it exactly as it was. */
@@ -159,7 +204,7 @@ export function rewriteUrl(value: string, ctx: RewriteCtx): string {
   if (abs.origin === ctx.proxyOrigin) return value;
   if (!/^(https?|wss?):$/.test(abs.protocol)) return value;
   if (!hostAllowed(abs.hostname, ctx.cfg)) return value;
-  return proxify(abs, ctx.proxyOrigin);
+  return proxify(abs, ctx.proxyOrigin, ctx.cfg);
 }
 
 export function rewriteSrcset(value: string, ctx: RewriteCtx): string {
@@ -217,6 +262,18 @@ export function handleElement(
   tag = tag.toLowerCase();
   if (tag === "base") {
     const href = get("href");
+    // Mirror mode: paths map 1:1, so keep <base> (single-page apps such as
+    // AngularJS in HTML5 mode require it), just pointed at the proxy.
+    if (href && ctx.cfg.defaultTarget && ctx.base.origin === ctx.cfg.defaultTarget) {
+      const rewritten = rewriteUrl(href, ctx);
+      try {
+        ctx.base = new URL(href, ctx.base);
+      } catch {
+        /* ignore */
+      }
+      set("href", rewritten);
+      return "keep";
+    }
     if (href) {
       try {
         ctx.base = new URL(href, ctx.base);
@@ -291,7 +348,7 @@ export function upstreamCookies(header: string | null, target: URL): string {
   return out.join("; ");
 }
 
-export function upstreamHeaders(req: Headers, target: URL, proxyOrigin: string): Headers {
+export function upstreamHeaders(req: Headers, target: URL, proxyOrigin: string, cfg?: ProxyConfig): Headers {
   const h = new Headers();
   req.forEach((value, key) => {
     const k = key.toLowerCase();
@@ -301,16 +358,19 @@ export function upstreamHeaders(req: Headers, target: URL, proxyOrigin: string):
   const cookies = upstreamCookies(req.get("cookie"), target);
   if (cookies) h.set("cookie", cookies);
 
-  const origin = req.get("origin");
-  if (origin) h.set("origin", origin === proxyOrigin ? target.origin : origin);
-
   const ref = req.get("referer");
   const page = proxiedPageFrom(ref, proxyOrigin);
+  // The origin of the page that made this request, as the target would see it.
+  const pageOrigin = page?.origin || cfg?.defaultTarget || target.origin;
+
+  const origin = req.get("origin");
+  if (origin) h.set("origin", origin === proxyOrigin ? pageOrigin : origin);
+
   if (page) h.set("referer", page.href);
   else if (ref) {
     try {
       const r = new URL(ref);
-      if (r.origin === proxyOrigin) h.set("referer", new URL(r.pathname + r.search, target).href);
+      if (r.origin === proxyOrigin) h.set("referer", new URL(r.pathname + r.search, cfg?.defaultTarget || target).href);
     } catch {
       /* drop */
     }
@@ -441,7 +501,7 @@ export function downstreamHeaders(
     } catch {
       abs = null;
     }
-    if (abs && /^https?:$/.test(abs.protocol) && hostAllowed(abs.hostname, cfg)) h.set("location", proxify(abs, proxyOrigin));
+    if (abs && /^https?:$/.test(abs.protocol) && hostAllowed(abs.hostname, cfg)) h.set("location", proxify(abs, proxyOrigin, cfg));
     else if (abs) h.set("location", abs.href); // leaves the proxy; the browser goes direct
   }
 
@@ -485,11 +545,11 @@ export function isNavigation(h: Headers): boolean {
  * allowed host (or are root-relative) back through the proxy.
  */
 export function clientShim(target: URL, proxyOrigin: string, cfg: ProxyConfig): string {
-  const data = JSON.stringify({ t: target.href, p: proxyOrigin, a: cfg.allowedHosts }).replace(/</g, "\\u003c");
-  return `<script>(function(){try{var C=${data};var A=C.a,P=C.p,T=C.t;
+  const data = JSON.stringify({ t: target.href, p: proxyOrigin, a: cfg.allowedHosts, d: cfg.defaultTarget }).replace(/</g, "\\u003c");
+  return `<script>(function(){try{var C=${data};var A=C.a,P=C.p,T=C.t,D=C.d;
 function ok(h){h=h.toLowerCase();for(var i=0;i<A.length;i++){var r=A[i];if(r.indexOf("*.")===0){var b=r.slice(2);if(h===b||h.slice(-b.length-1)==="."+b)return true}else if(h===r)return true}return false}
 function rw(u,ws){try{if(u==null)return u;var s=String(u);if(/^(data|blob|javascript|about):/i.test(s))return u;var x=new URL(s,T);if(x.host===new URL(P).host){if(x.pathname==="/"&&x.searchParams.get("url"))return u;x=new URL(x.pathname+x.search+x.hash,T)}
-if(!/^(https?|wss?):$/.test(x.protocol)||!ok(x.hostname))return u;var o=ws?P.replace(/^http/,"ws"):P;return o+"/?url="+encodeURIComponent(x.href)}catch(e){return u}}
+if(!/^(https?|wss?):$/.test(x.protocol)||!ok(x.hostname))return u;var o=ws?P.replace(/^http/,"ws"):P;if(D&&x.protocol.replace(/^ws/,"http")+"//"+x.host===D)return o+x.pathname+x.search+x.hash;return o+"/?url="+encodeURIComponent(x.href)}catch(e){return u}}
 var F=window.fetch;if(F)window.fetch=function(i,n){if(typeof Request!=="undefined"&&i instanceof Request){var r=rw(i.url);if(r!==i.url)i=new Request(r,i)}else i=rw(i);return F.call(this,i,n)};
 var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){var a=[].slice.call(arguments);a[1]=rw(u);return X.apply(this,a)};
 if(window.WebSocket){var W=window.WebSocket;var NW=function(u,p){return p===undefined?new W(rw(u,1)):new W(rw(u,1),p)};NW.prototype=W.prototype;NW.CONNECTING=0;NW.OPEN=1;NW.CLOSING=2;NW.CLOSED=3;window.WebSocket=NW}

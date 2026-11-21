@@ -11,6 +11,9 @@ workers_dev = true
 ALLOWED_HOSTS = ""
 # REQUIRED. The origin your add-in is served from (used for CORS and frame-ancestors).
 ADDIN_ORIGIN = "https://helliott20.github.io"
+# OPTIONAL single-site mode: serve this one site at the proxy's own paths. Use it for apps that
+# read their own URL / query string (they show up blank via /?url=). It is implicitly allowed.
+# DEFAULT_TARGET = "https://presenter.example.com"
 
 # Optional: serve from your own domain instead of *.workers.dev
 # routes = [{ pattern = "liveweb-proxy.example.com", custom_domain = true }]

@@ -2,6 +2,7 @@
 // Paste this into the Cloudflare dashboard (Workers > Edit code). Regenerate with:
 //   cd proxy/cloudflare && npx wrangler deploy --dry-run --outdir out
 // Set variables ALLOWED_HOSTS and ADDIN_ORIGIN in the Worker's Settings > Variables.
+// Variables: ALLOWED_HOSTS, ADDIN_ORIGIN, optional DEFAULT_TARGET (single-site mode).
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -18,7 +19,18 @@ function parseConfig(env) {
     } catch {
     }
   }
-  return { allowedHosts, addinOrigin };
+  let defaultTarget = "";
+  if (env.DEFAULT_TARGET) {
+    try {
+      const u = new URL(env.DEFAULT_TARGET);
+      if (u.protocol === "https:" || u.protocol === "http:") {
+        defaultTarget = u.origin;
+        if (!allowedHosts.includes(u.hostname.toLowerCase())) allowedHosts.push(u.hostname.toLowerCase());
+      }
+    } catch {
+    }
+  }
+  return { allowedHosts, addinOrigin, defaultTarget };
 }
 __name(parseConfig, "parseConfig");
 function hostAllowed(hostname, cfg) {
@@ -75,6 +87,7 @@ function resolveTarget(reqUrl, headers, cfg) {
     if (!target) return { kind: "error", status: 400, message: "Bad url parameter (absolute http(s) URL required)." };
   } else {
     let base = proxiedPageFrom(headers.get("referer"), reqUrl.origin);
+    if (!base && cfg.defaultTarget) base = new URL(cfg.defaultTarget + "/");
     if (!base) {
       const c = readCookie(headers.get("cookie"), BASE_COOKIE);
       if (c) {
@@ -103,10 +116,22 @@ function resolveTarget(reqUrl, headers, cfg) {
   return { kind: "target", target, viaFallback };
 }
 __name(resolveTarget, "resolveTarget");
-function proxify(abs, proxyOrigin) {
+function proxify(abs, proxyOrigin, cfg) {
+  if (cfg?.defaultTarget) {
+    const o = abs.protocol === "ws:" ? "http:" : abs.protocol === "wss:" ? "https:" : abs.protocol;
+    if (o + "//" + abs.host === cfg.defaultTarget) return proxyOrigin + abs.pathname + abs.search + abs.hash;
+  }
   return proxyOrigin + "/?url=" + encodeURIComponent(abs.href);
 }
 __name(proxify, "proxify");
+function canonicalRedirect(reqUrl, headers, method, target, viaFallback, cfg) {
+  if (method !== "GET" || !isNavigation(headers)) return null;
+  const mirrored = !!cfg.defaultTarget && target.origin === cfg.defaultTarget;
+  if (!viaFallback && !mirrored) return null;
+  const canonical = proxify(target, reqUrl.origin, cfg);
+  return canonical === reqUrl.href ? null : canonical;
+}
+__name(canonicalRedirect, "canonicalRedirect");
 function rewriteUrl(value, ctx) {
   const v = value.trim();
   if (!v || v.startsWith("#") || /^(javascript|data|blob|mailto|tel|about|sms):/i.test(v)) return value;
@@ -119,7 +144,7 @@ function rewriteUrl(value, ctx) {
   if (abs.origin === ctx.proxyOrigin) return value;
   if (!/^(https?|wss?):$/.test(abs.protocol)) return value;
   if (!hostAllowed(abs.hostname, ctx.cfg)) return value;
-  return proxify(abs, ctx.proxyOrigin);
+  return proxify(abs, ctx.proxyOrigin, ctx.cfg);
 }
 __name(rewriteUrl, "rewriteUrl");
 function rewriteSrcset(value, ctx) {
@@ -159,6 +184,15 @@ function handleElement(tag, get, set, ctx) {
   tag = tag.toLowerCase();
   if (tag === "base") {
     const href = get("href");
+    if (href && ctx.cfg.defaultTarget && ctx.base.origin === ctx.cfg.defaultTarget) {
+      const rewritten = rewriteUrl(href, ctx);
+      try {
+        ctx.base = new URL(href, ctx.base);
+      } catch {
+      }
+      set("href", rewritten);
+      return "keep";
+    }
     if (href) {
       try {
         ctx.base = new URL(href, ctx.base);
@@ -228,7 +262,7 @@ function upstreamCookies(header, target) {
   return out.join("; ");
 }
 __name(upstreamCookies, "upstreamCookies");
-function upstreamHeaders(req, target, proxyOrigin) {
+function upstreamHeaders(req, target, proxyOrigin, cfg) {
   const h = new Headers();
   req.forEach((value, key) => {
     const k = key.toLowerCase();
@@ -237,15 +271,16 @@ function upstreamHeaders(req, target, proxyOrigin) {
   });
   const cookies = upstreamCookies(req.get("cookie"), target);
   if (cookies) h.set("cookie", cookies);
-  const origin = req.get("origin");
-  if (origin) h.set("origin", origin === proxyOrigin ? target.origin : origin);
   const ref = req.get("referer");
   const page = proxiedPageFrom(ref, proxyOrigin);
+  const pageOrigin = page?.origin || cfg?.defaultTarget || target.origin;
+  const origin = req.get("origin");
+  if (origin) h.set("origin", origin === proxyOrigin ? pageOrigin : origin);
   if (page) h.set("referer", page.href);
   else if (ref) {
     try {
       const r = new URL(ref);
-      if (r.origin === proxyOrigin) h.set("referer", new URL(r.pathname + r.search, target).href);
+      if (r.origin === proxyOrigin) h.set("referer", new URL(r.pathname + r.search, cfg?.defaultTarget || target).href);
     } catch {
     }
   }
@@ -352,7 +387,7 @@ function downstreamHeaders(up, target, proxyOrigin, reqOrigin, cfg) {
     } catch {
       abs = null;
     }
-    if (abs && /^https?:$/.test(abs.protocol) && hostAllowed(abs.hostname, cfg)) h.set("location", proxify(abs, proxyOrigin));
+    if (abs && /^https?:$/.test(abs.protocol) && hostAllowed(abs.hostname, cfg)) h.set("location", proxify(abs, proxyOrigin, cfg));
     else if (abs) h.set("location", abs.href);
   }
   for (const sc of up.setCookies) {
@@ -385,11 +420,11 @@ function isNavigation(h) {
 }
 __name(isNavigation, "isNavigation");
 function clientShim(target, proxyOrigin, cfg) {
-  const data = JSON.stringify({ t: target.href, p: proxyOrigin, a: cfg.allowedHosts }).replace(/</g, "\\u003c");
-  return `<script>(function(){try{var C=${data};var A=C.a,P=C.p,T=C.t;
+  const data = JSON.stringify({ t: target.href, p: proxyOrigin, a: cfg.allowedHosts, d: cfg.defaultTarget }).replace(/</g, "\\u003c");
+  return `<script>(function(){try{var C=${data};var A=C.a,P=C.p,T=C.t,D=C.d;
 function ok(h){h=h.toLowerCase();for(var i=0;i<A.length;i++){var r=A[i];if(r.indexOf("*.")===0){var b=r.slice(2);if(h===b||h.slice(-b.length-1)==="."+b)return true}else if(h===r)return true}return false}
 function rw(u,ws){try{if(u==null)return u;var s=String(u);if(/^(data|blob|javascript|about):/i.test(s))return u;var x=new URL(s,T);if(x.host===new URL(P).host){if(x.pathname==="/"&&x.searchParams.get("url"))return u;x=new URL(x.pathname+x.search+x.hash,T)}
-if(!/^(https?|wss?):$/.test(x.protocol)||!ok(x.hostname))return u;var o=ws?P.replace(/^http/,"ws"):P;return o+"/?url="+encodeURIComponent(x.href)}catch(e){return u}}
+if(!/^(https?|wss?):$/.test(x.protocol)||!ok(x.hostname))return u;var o=ws?P.replace(/^http/,"ws"):P;if(D&&x.protocol.replace(/^ws/,"http")+"//"+x.host===D)return o+x.pathname+x.search+x.hash;return o+"/?url="+encodeURIComponent(x.href)}catch(e){return u}}
 var F=window.fetch;if(F)window.fetch=function(i,n){if(typeof Request!=="undefined"&&i instanceof Request){var r=rw(i.url);if(r!==i.url)i=new Request(r,i)}else i=rw(i);return F.call(this,i,n)};
 var X=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){var a=[].slice.call(arguments);a[1]=rw(u);return X.apply(this,a)};
 if(window.WebSocket){var W=window.WebSocket;var NW=function(u,p){return p===undefined?new W(rw(u,1)):new W(rw(u,1),p)};NW.prototype=W.prototype;NW.CONNECTING=0;NW.OPEN=1;NW.CLOSING=2;NW.CLOSED=3;window.WebSocket=NW}
@@ -412,10 +447,9 @@ var worker_default = {
     if (res.kind === "error") return text(res.status, res.message);
     const { target, viaFallback } = res;
     const proxyOrigin = reqUrl.origin;
-    if (viaFallback && isNavigation(request.headers) && request.method === "GET") {
-      return Response.redirect(proxify(target, proxyOrigin), 302);
-    }
-    const headers = upstreamHeaders(request.headers, target, proxyOrigin);
+    const redirectTo = canonicalRedirect(reqUrl, request.headers, request.method, target, viaFallback, cfg);
+    if (redirectTo) return Response.redirect(redirectTo, 302);
+    const headers = upstreamHeaders(request.headers, target, proxyOrigin, cfg);
     if ((request.headers.get("upgrade") || "").toLowerCase() === "websocket") {
       headers.set("upgrade", "websocket");
       return fetch(target.href, { method: "GET", headers });
